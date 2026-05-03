@@ -1,0 +1,19 @@
+# Credentials — never commit these
+Credentials/
+credentials/
+*.json
+!xads-scraper/data/seen_hashes.json
+
+# Env files
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
