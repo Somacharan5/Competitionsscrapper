@@ -1,13 +1,11 @@
 import json
-import os
 import re
 import time
 
 from google import genai
 from google.genai import types
 
-from .config import MODEL, SEARCH_QUERIES, XADS_CONTEXT
-
+from .config import COMPETITION_QUERIES, MODEL, PLACEMENT_QUERIES, XADS_CONTEXT
 
 _client = None
 
@@ -15,42 +13,60 @@ _client = None
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
+        import os
         _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     return _client
 
 
-_PROMPT_TEMPLATE = """\
+_COMPETITION_PROMPT = """\
 {xads_context}
 
 Search for: {query}
 
-Find startup/business competitions, incubators, accelerators, and placement opportunities.
-Return results as a JSON array. Each item must have:
-- name: Full competition name
-- organizer: Who runs it
-- country: Country (e.g. "India", "USA", "UK", "Global")
-- state_city: City or state if available, else "N/A"
-- category: One of [b_plan, case, incubator, accelerator, placement]
-- deadline: Application deadline (ISO date YYYY-MM-DD if available, else "Rolling" or "TBD")
-- prize_reward: Cash prize or reward description (e.g. "₹5 Lakh cash + mentorship")
-- apply_link: Direct application URL
-- description: 2-3 sentence gist of what the competition/program is
-- india_relevance: true or false — is it open to Indian teams?
-- preseed_friendly: true or false — suitable for pre-seed stage startups
+Find up to 5 real startup/business competitions, incubators, or accelerators with open applications in 2025.
+Return a JSON array. Each item MUST have ALL these fields:
+- name: Full official competition name
+- organizer: Organization running it
+- country: "India", "USA", "Global", etc.
+- state_city: City/state or "N/A"
+- category: One of exactly [b_plan, case, incubator, accelerator]
+- deadline: YYYY-MM-DD if known, "Rolling", or "TBD"
+- prize_reward: Prize/benefit description e.g. "₹5 Lakh + mentorship" or "Equity-free $100K"
+- apply_link: MUST be a real https:// URL to the application page or official competition website. Search the web to find this. Never use "N/A".
+- description: 2 sentences about what it is and why it suits a pre-seed AdTech startup
+- india_relevance: true if Indian teams can apply, else false
+- preseed_friendly: true if open to pre-seed/prototype stage, else false
 
-Exclude: expired competitions, pure hardware/deep-tech, pure coding hackathons without a business track, competitions requiring Series A+ or >$500K revenue.
+Exclude: expired deadlines, hardware-only, pure coding hackathons, requires Series A or >$500K revenue.
+Return ONLY valid JSON array, no markdown, no explanation.
+"""
 
-Return ONLY a valid JSON array. No markdown fences, no preamble, no explanation.
+_PLACEMENT_PROMPT = """\
+{xads_context}
+
+Search for: {query}
+
+Find up to 4 real placement competitions or top-tier job opportunities open in 2025 for MBA/management students in India.
+Return a JSON array. Each item MUST have ALL these fields:
+- name: Full official name
+- organizer: Company or organization
+- country: Country
+- state_city: City or "N/A"
+- deadline: YYYY-MM-DD if known, "Rolling", or "TBD"
+- prize_reward: Prize, stipend, or reward e.g. "PPO + ₹2L prize"
+- apply_link: MUST be a real https:// URL. Search the web to find the apply page. Never use "N/A".
+- description: 2 sentences about the competition and what participants win
+- status: "Open", "Rolling", or "TBD"
+
+Return ONLY valid JSON array, no markdown, no explanation.
 """
 
 
 def _extract_json(text: str) -> list[dict]:
     text = text.strip()
-    # Strip markdown fences if present
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
     text = text.strip()
-
     start = text.find("[")
     end = text.rfind("]")
     if start == -1 or end == -1:
@@ -61,78 +77,63 @@ def _extract_json(text: str) -> list[dict]:
         return []
 
 
-def search_category(category: str) -> list[dict]:
-    queries = SEARCH_QUERIES.get(category, [])
-    results: list[dict] = []
+def _is_valid_url(url: str) -> bool:
+    return isinstance(url, str) and url.startswith("http") and "." in url
+
+
+def _call_gemini(prompt: str) -> list[dict]:
     client = _get_client()
-
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
+    max_attempts = 2
 
-    for query in queries:
-        print(f"  Searching [{category}]: {query[:60]}...")
+    for attempt in range(max_attempts):
         try:
             response = client.models.generate_content(
                 model=MODEL,
-                contents=_PROMPT_TEMPLATE.format(
-                    xads_context=XADS_CONTEXT.strip(),
-                    query=query,
-                ),
+                contents=prompt,
                 config=types.GenerateContentConfig(
                     tools=[google_search_tool],
-                    temperature=0.2,
+                    temperature=0.1,
                 ),
             )
-
-            raw_text = response.text or ""
-            items = _extract_json(raw_text)
-            for item in items:
-                item["source_query"] = query
-                if "category" not in item or not item["category"]:
-                    item["category"] = category
-            results.extend(items)
-
+            return _extract_json(response.text or "")
         except Exception as exc:
-            err_str = str(exc)
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                # Extract suggested retry delay from error message
-                import re as _re
-                m = _re.search(r"retry in ([\d.]+)s", err_str)
-                wait = float(m.group(1)) + 2 if m else 20
-                print(f"    Rate limited — waiting {wait:.0f}s then retrying...")
+            err = str(exc)
+            if ("429" in err or "RESOURCE_EXHAUSTED" in err) and attempt == 0:
+                m = re.search(r"retry in ([\d.]+)s", err)
+                wait = float(m.group(1)) + 3 if m else 20
+                print(f"    Rate limited — waiting {wait:.0f}s...")
                 time.sleep(wait)
-                try:
-                    response = client.models.generate_content(
-                        model=MODEL,
-                        contents=_PROMPT_TEMPLATE.format(
-                            xads_context=XADS_CONTEXT.strip(),
-                            query=query,
-                        ),
-                        config=types.GenerateContentConfig(
-                            tools=[google_search_tool],
-                            temperature=0.2,
-                        ),
-                    )
-                    raw_text = response.text or ""
-                    items = _extract_json(raw_text)
-                    for item in items:
-                        item["source_query"] = query
-                        if "category" not in item or not item["category"]:
-                            item["category"] = category
-                    results.extend(items)
-                except Exception as exc2:
-                    print(f"    Retry also failed: {exc2}")
             else:
-                print(f"    Error for query '{query[:40]}': {exc}")
+                print(f"    API error: {err[:100]}")
+                return []
+    return []
 
-        # Stay within free tier rate limit (20 RPM = 3s per request)
+
+def search_competitions() -> list[dict]:
+    results: list[dict] = []
+    for query in COMPETITION_QUERIES:
+        print(f"  [competitions] {query[:65]}...")
+        items = _call_gemini(
+            _COMPETITION_PROMPT.format(xads_context=XADS_CONTEXT.strip(), query=query)
+        )
+        # Drop entries with no real apply link
+        valid = [i for i in items if _is_valid_url(i.get("apply_link", ""))]
+        print(f"    → {len(valid)} valid entries (of {len(items)} returned)")
+        results.extend(valid)
         time.sleep(5)
-
-    print(f"  [{category}] found {len(results)} raw entries")
     return results
 
 
-def search_all() -> list[dict]:
-    all_results: list[dict] = []
-    for category in SEARCH_QUERIES:
-        all_results.extend(search_category(category))
-    return all_results
+def search_jobs() -> list[dict]:
+    results: list[dict] = []
+    for query in PLACEMENT_QUERIES:
+        print(f"  [placement] {query[:65]}...")
+        items = _call_gemini(
+            _PLACEMENT_PROMPT.format(xads_context=XADS_CONTEXT.strip(), query=query)
+        )
+        valid = [i for i in items if _is_valid_url(i.get("apply_link", ""))]
+        print(f"    → {len(valid)} valid entries (of {len(items)} returned)")
+        results.extend(valid)
+        time.sleep(5)
+    return results

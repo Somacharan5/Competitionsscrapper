@@ -12,81 +12,31 @@ SHEET_ID = "14jJYhpdoDqQAYXzLequShRY4yaT1PQ_jTT6pjK4DV_E"
 
 XADS_CONTEXT = """
 We are Xads, a pre-seed AdTech startup from Masters Union, Gurugram, India.
-We are building an outdoor advertising analytics platform — like Facebook Ads Manager
-but for OOH (Out-of-Home) billboard advertising in India.
-We have a functional prototype and early industry presence.
-We have won competitions at IIT Delhi, Jamia Millia Islamia, BITS Hyderabad, MUIT.
-We are 3rd-year Masters Union students.
-Prioritise competitions that:
-- Welcome pre-seed / prototype-stage startups
-- Are open to Indian teams (or global/international)
-- Offer cash prizes, investor networks, incubation, or strong brand recognition
-- Have application deadlines in the next 90 days (or rolling)
+We build an outdoor advertising analytics platform — like Facebook Ads Manager for OOH billboard advertising in India.
+We have a functional prototype, won competitions at IIT Delhi, Jamia Millia Islamia, BITS Hyderabad, MUIT.
+We are 3rd-year Masters Union students (pre-seed stage, no revenue yet).
 """
-
-TARGET_SITES = [
-    "https://unstop.com/competitions",
-    "https://dare2compete.com/competition",
-    "https://devfolio.co/hackathons",
-    "https://f6s.com/programmes",
-    "https://startupindia.gov.in/content/sih/en/startupgov/incubators.html",
-    "https://techstars.com/accelerators",
-    "https://ycombinator.com/apply",
-    "https://antler.co",
-    "https://seedcamp.com",
-]
-
-SEARCH_QUERIES = {
-    "b_plan": [
-        "business plan competition 2025 2026 cash prize open applications",
-        "startup pitch competition india 2025 open registration",
-        "global business plan competition prize money apply now",
-        "best b-plan competitions for pre-seed startups 2025",
-        "adtech startup competition 2025 prize",
-        "site:devfolio.co competitions",
-        "site:unstop.com business plan competition",
-        "site:dare2compete.com b-plan competition",
-        "site:techstars.com open applications",
-        "site:f6s.com competition open",
-    ],
-    "case": [
-        "case competition 2025 MBA masters open registration",
-        "consulting case competition 2025 india global",
-        "strategy case competition prize money 2025",
-        "site:casecompetitions.com upcoming",
-    ],
-    "incubator": [
-        "startup incubator applications open 2025 india adtech",
-        "IIT incubator open applications 2025",
-        "NASSCOM incubator program 2025",
-        "Y Combinator application 2025 batch",
-        "startup india seed fund scheme 2025",
-        "site:startupindia.gov.in incubation",
-    ],
-    "accelerator": [
-        "accelerator program open applications 2025 adtech india",
-        "global accelerator program 2025 pre-seed startup",
-        "Google for startups accelerator india 2025",
-        "Microsoft for startups 2025 apply",
-        "site:seedcamp.com open",
-        "site:antler.co applications",
-    ],
-    "placement": [
-        "placement competition 2025 india MBA",
-        "national management olympiad 2025",
-        "L&T EduTech competition 2025",
-        "Yes Bank case competition placement 2025",
-        "placement competition masters union gurgaon 2025",
-    ],
-}
 
 MODEL = "gemini-2.5-flash"
 
-COMPETITION_FIELDS = [
-    "name", "organizer", "country", "state_city", "category",
-    "deadline", "prize_reward", "apply_link", "description",
-    "india_relevance", "preseed_friendly",
+# 8 queries total — fits within 20/day free tier with headroom for retries
+COMPETITION_QUERIES = [
+    "startup pitch competition b-plan 2025 india cash prize open applications pre-seed adtech",
+    "global business plan competition 2025 prize money open registration india eligible",
+    "IIT IIM NASSCOM startup competition incubator 2025 open applications india",
+    "accelerator program 2025 pre-seed adtech india open applications YCombinator Techstars Antler Google Microsoft",
+    "case competition strategy consulting MBA masters 2025 india global prize open registration",
 ]
+
+PLACEMENT_QUERIES = [
+    "placement competition 2025 india MBA management prize stipend open registration",
+    "national management olympiad corporate case competition placement 2025 india",
+    "top company placement competition india 2025 MBA prize PPO",
+]
+
+# Hard caps
+MAX_COMPETITIONS = 15
+MAX_JOBS = 10
 
 COMPETITIONS_SHEET_HEADERS = [
     "Competition Name", "Category", "Country", "State / City",
